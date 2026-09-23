@@ -1,0 +1,6 @@
+{
+  "name": "Rescue AI — Emergency Drone Network",
+  "description": "AI Emergency Rescue Drone Network prototype for Colegio Campestre La Colina by Santiago Cegarra, Samuel Velasco, and Jeronimo Escobar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

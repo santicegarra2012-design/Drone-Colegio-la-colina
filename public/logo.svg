@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 220" fill="none">
+  <!-- Rounded Triangle Emblem -->
+  <g transform="translate(15, 10)">
+    <defs>
+      <!-- Clip Path for the rounded triangle -->
+      <clipPath id="colinaTriangleClip">
+        <path d="M 95 18 C 102 6, 114 6, 121 18 L 202 165 C 208 177, 201 188, 187 188 L 29 188 C 15 188, 8 177, 14 165 Z" />
+      </clipPath>
+      <linearGradient id="navyGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#14345c"/>
+        <stop offset="100%" stop-color="#0b223d"/>
+      </linearGradient>
+      <linearGradient id="greenGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#2ca024"/>
+        <stop offset="100%" stop-color="#46c338"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Base Shape clipped with rounded triangle -->
+    <g clip-path="url(#colinaTriangleClip)">
+      <!-- Right/Upper Navy Blue Region -->
+      <rect x="0" y="0" width="220" height="200" fill="url(#navyGrad)" />
+
+      <!-- Left Vibrant Green Region (curved boundary) -->
+      <path d="M 0 200 L 0 110 C 25 105, 55 125, 95 140 C 130 152, 145 175, 155 200 Z" fill="url(#greenGrad)" />
+      <path d="M 0 200 L 0 75 C 35 70, 70 95, 105 130 C 135 160, 145 185, 150 200 Z" fill="url(#greenGrad)" opacity="0.95" />
+
+      <!-- Stylized White Dynamic Human Figure / Arched Cross -->
+      <!-- Circular Head -->
+      <circle cx="114" cy="74" r="14" fill="#FFFFFF" />
+
+      <!-- White Sweeping Upper Arm Swoosh -->
+      <path d="M 62 76 C 88 84, 115 108, 130 148 C 122 136, 102 110, 70 96 Z" fill="#FFFFFF" />
+      
+      <!-- White Sweeping Main Body / Crossed Legs Arc -->
+      <path d="M 40 188 C 65 170, 95 130, 132 75 C 138 90, 142 125, 148 188 C 138 155, 130 130, 118 116 C 96 142, 68 174, 40 188 Z" fill="#FFFFFF" />
+
+      <!-- Dynamic sweeping white central band -->
+      <path d="M 42 186 C 75 160, 110 115, 134 78 C 138 72, 148 88, 142 108 C 128 140, 114 170, 95 188 Z" fill="#FFFFFF" opacity="0.9" />
+    </g>
+  </g>
+
+  <!-- Typography: Colegio Campestre La Colina -->
+  <g transform="translate(230, 30)">
+    <!-- Colegio Campestre in neat geometric sans -->
+    <text x="0" y="55" font-family="'Inter', 'Montserrat', system-ui, sans-serif" font-size="28" font-weight="600" fill="#0e2b4d" letter-spacing="0.5">
+      Colegio Campestre
+    </text>
+
+    <!-- La Colina in bold modern font with custom vibrant green dot on the 'i' -->
+    <text x="0" y="125" font-family="'Inter', 'Montserrat', system-ui, sans-serif" font-size="62" font-weight="900" fill="#0e2b4d" letter-spacing="-1">
+      La Col<tspan fill="#0e2b4d">ı</tspan>na
+    </text>
+
+    <!-- Custom Green Circle dot on top of the 'i' in Colina -->
+    <circle cx="147" cy="85" r="9.5" fill="#38b438" />
+  </g>
+</svg>
