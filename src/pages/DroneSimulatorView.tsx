@@ -57,12 +57,16 @@ export const DroneSimulatorView: React.FC = () => {
   const {
     simulatorState,
     setSimulatorState,
+    selectedDrone,
+    selectedDroneId,
+    selectedEmergencyId,
+    selectedEmergency,
+    updateDrone,
+    updateEmergencyStatus,
     toggleLidarMode,
     toggleRescueMode,
     toggleAutopilot,
-    resetSimulator,
     setScenario,
-    selectedEmergency,
     deployDroneToEmergency,
   } = useRescue();
 
@@ -77,6 +81,9 @@ export const DroneSimulatorView: React.FC = () => {
   const [payloadDropped, setPayloadDropped] = useState<boolean>(false);
   const [payloadLanded, setPayloadLanded] = useState<boolean>(false);
   const [missionCompleted, setMissionCompleted] = useState<boolean>(false);
+  const [missionPoints, setMissionPoints] = useState(0);
+  const [missionHint, setMissionHint] = useState('Engage autopilot or fly within 35 m of the target to deliver the kit.');
+  const payloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [obstacleAlert, setObstacleAlert] = useState<{ active: boolean; dist: string; dir: string } | null>(null);
 
   // Physics & Animation refs for Three.js
@@ -127,7 +134,18 @@ export const DroneSimulatorView: React.FC = () => {
     setPayloadDropped(false);
     setPayloadLanded(false);
     setMissionCompleted(false);
+    setMissionHint('Engage autopilot or fly within 35 m of the target to deliver the kit.');
     if (parachutePackageRef.current) parachutePackageRef.current.visible = false;
+    setSimulatorState((state: any) => ({
+      ...state,
+      autopilot: false,
+      speed: 0,
+      altitude: p.droneLaunchPos[1] + 16,
+      distanceToTargetMeters: Math.round(Math.hypot(
+        p.droneLaunchPos[0] - p.incidentTargetPos[0],
+        p.droneLaunchPos[2] - p.incidentTargetPos[2]
+      )),
+    }));
     sound.playAlert();
   };
 
@@ -143,11 +161,35 @@ export const DroneSimulatorView: React.FC = () => {
     { id: 'SCENARIO-7', name: 'Scenario 7: Dense High-Rise Obstacle Navigation', desc: 'Power lines, construction cranes, tight canyon', diff: 'HAZARDOUS' },
     { id: 'SCENARIO-8', name: 'Scenario 8: Satellite Communication Interruption', desc: 'Autonomous edge-compute fallback engagement', diff: 'STANDARD' },
   ];
+  const activeScenario = scenarios.find((scenario) => scenario.id === simulatorState.activeScenario) ?? scenarios[0];
+  const needsLidar = ['SCENARIO-3', 'SCENARIO-4', 'SCENARIO-6', 'SCENARIO-8'].includes(activeScenario.id);
+  const needsRescueMode = ['SCENARIO-2', 'SCENARIO-6', 'SCENARIO-8'].includes(activeScenario.id);
+  const dropRadius = activeScenario.id === 'SCENARIO-7' ? 15 : 35;
+  const sensorsReady = (!needsLidar || simulatorState.lidarActive) && (!needsRescueMode || simulatorState.rescueMode);
 
   // Deploy Medical Payload Action
   const deployPayload = () => {
     if (payloadDropped) return;
+    const distance = Math.hypot(
+      dronePos.current.x - targetPos.current.x,
+      dronePos.current.z - targetPos.current.z
+    );
+    if (distance >= dropRadius) {
+      setMissionHint(`Too far to deliver (${Math.round(distance)} m). Reach the ${dropRadius} m drop zone first.`);
+      sound.playBeep(360, 0.12);
+      return;
+    }
+    if (!sensorsReady) {
+      const missing = [
+        needsLidar && !simulatorState.lidarActive ? 'LiDAR' : '',
+        needsRescueMode && !simulatorState.rescueMode ? 'Rescue Mode' : '',
+      ].filter(Boolean).join(' and ');
+      setMissionHint(`Mission check failed: turn on ${missing} before delivery.`);
+      sound.playBeep(360, 0.12);
+      return;
+    }
     sound.playAlert();
+    setMissionHint('Payload released. Keep the drone steady while it descends to the target.');
     setPayloadDropped(true);
 
     // Three.js Parachute deployment
@@ -161,10 +203,25 @@ export const DroneSimulatorView: React.FC = () => {
     }
 
     // Land after 2.5 seconds
-    setTimeout(() => {
+    payloadTimerRef.current = setTimeout(() => {
+      payloadTimerRef.current = null;
       sound.playSuccess();
       setPayloadLanded(true);
       setMissionCompleted(true);
+      setMissionPoints((points) => points + 100);
+      setMissionHint('Mission complete: delivery confirmed and rescue supplies are on site.');
+      updateEmergencyStatus(selectedEmergencyId, 'COMPLETED', {
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        phase: 'DELIVERY CONFIRMED',
+        message: `Medical payload delivered by ${selectedDroneId}; ${activeScenario.name} completed.`,
+        type: 'success',
+      });
+      updateDrone(selectedDroneId, {
+        status: 'AVAILABLE',
+        currentMissionId: undefined,
+        speedKmh: 0,
+        batteryPercent: Math.max(0, selectedDrone.batteryPercent - 8),
+      });
       confetti({
         particleCount: 120,
         spread: 80,
@@ -172,6 +229,44 @@ export const DroneSimulatorView: React.FC = () => {
       });
     }, 2400);
   };
+
+  const restartMission = () => {
+    if (payloadTimerRef.current) clearTimeout(payloadTimerRef.current);
+    payloadTimerRef.current = null;
+    const preset = MAP_PRESETS[selectedMapId];
+    dronePos.current = {
+      x: preset.droneLaunchPos[0],
+      y: preset.droneLaunchPos[1] + 16,
+      z: preset.droneLaunchPos[2],
+    };
+    targetPos.current = {
+      x: preset.incidentTargetPos[0],
+      y: preset.incidentTargetPos[1],
+      z: preset.incidentTargetPos[2],
+    };
+    droneSpeed.current = 0;
+    droneRot.current = { pitch: 0, roll: 0, yaw: 0 };
+    if (parachutePackageRef.current) parachutePackageRef.current.visible = false;
+    setPayloadDropped(false);
+    setPayloadLanded(false);
+    setMissionCompleted(false);
+    setMissionHint(`Mission reset. Reach the ${dropRadius} m drop zone and complete any sensor checks before delivery.`);
+    setSimulatorState((state: any) => ({
+      ...state,
+      autopilot: false,
+      speed: 0,
+      altitude: preset.droneLaunchPos[1] + 16,
+      distanceToTargetMeters: Math.round(Math.hypot(
+        preset.droneLaunchPos[0] - preset.incidentTargetPos[0],
+        preset.droneLaunchPos[2] - preset.incidentTargetPos[2]
+      )),
+    }));
+    sound.playBeep(760, 0.08);
+  };
+
+  useEffect(() => () => {
+    if (payloadTimerRef.current) clearTimeout(payloadTimerRef.current);
+  }, []);
 
   // Keyboard navigation listener
   useEffect(() => {
@@ -531,10 +626,12 @@ export const DroneSimulatorView: React.FC = () => {
 
         if (dist > 8) {
           droneSpeed.current = Math.min(65, droneSpeed.current + 1.2);
-          const targetYaw = Math.atan2(dx, -dz);
-          droneRot.current.yaw += (targetYaw - droneRot.current.yaw) * 0.05;
+          const targetYaw = Math.atan2(-dx, -dz);
+          droneRot.current.yaw = targetYaw;
           droneRot.current.pitch = -0.1;
         } else {
+          dronePos.current.x = targetPos.current.x;
+          dronePos.current.z = targetPos.current.z;
           droneSpeed.current = Math.max(0, droneSpeed.current - 1.5);
           droneRot.current.pitch = 0;
         }
@@ -595,6 +692,8 @@ export const DroneSimulatorView: React.FC = () => {
 
       // Parachute physics descent
       if (parachutePackageRef.current && parachutePackageRef.current.visible && !payloadLanded) {
+        parachutePackageRef.current.position.x += (targetPos.current.x - parachutePackageRef.current.position.x) * 0.035;
+        parachutePackageRef.current.position.z += (targetPos.current.z - parachutePackageRef.current.position.z) * 0.035;
         parachutePackageRef.current.position.y = Math.max(
           targetPos.current.y + 1,
           parachutePackageRef.current.position.y - 0.25
@@ -701,7 +800,7 @@ export const DroneSimulatorView: React.FC = () => {
 
   const currentPreset = MAP_PRESETS[selectedMapId];
   const distMeters = simulatorState.distanceToTargetMeters;
-  const inDropZone = distMeters < 35;
+  const inDropZone = distMeters < dropRadius;
 
   return (
     <div className="p-4 md:p-6 space-y-6 text-left animate-in fade-in duration-200">
@@ -737,7 +836,16 @@ export const DroneSimulatorView: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Autopilot Toggle */}
           <button
-            onClick={toggleAutopilot}
+              onClick={() => {
+                if (missionCompleted) {
+                  restartMission();
+                  deployDroneToEmergency(selectedDroneId, selectedEmergencyId);
+                } else if (simulatorState.autopilot) {
+                  toggleAutopilot();
+                } else {
+                  deployDroneToEmergency(selectedDroneId, selectedEmergencyId);
+                }
+              }}
             className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all ${
               simulatorState.autopilot
                 ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-950/40 animate-pulse font-bold'
@@ -1028,7 +1136,7 @@ export const DroneSimulatorView: React.FC = () => {
               }`}
             >
               <span className={`w-2 h-2 rounded-full ${useR3FTerrain ? 'bg-slate-950 animate-pulse' : 'bg-slate-400'}`} />
-              <span>{useR3FTerrain ? 'R3F + DREI PROCEDURAL' : 'TACTICAL HUD'}</span>
+              <span>{useR3FTerrain ? '3D CAMPUS MODEL' : 'TACTICAL HUD'}</span>
             </button>
           </div>
 
@@ -1079,7 +1187,7 @@ export const DroneSimulatorView: React.FC = () => {
 
           {/* Rescue Action Bar: Drop Medical Payload Button */}
           <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
-            {inDropZone && !payloadDropped && (
+            {inDropZone && !payloadDropped && sensorsReady && (
               <button
                 onClick={deployPayload}
                 className="px-6 py-3 rounded-2xl bg-gradient-to-r from-red-600 via-amber-500 to-red-600 text-white font-black text-sm font-heading shadow-2xl border-2 border-white animate-bounce flex items-center gap-2.5 transition-transform hover:scale-105"
@@ -1180,11 +1288,12 @@ export const DroneSimulatorView: React.FC = () => {
               </button>
               <button
                 onClick={deployPayload}
-                disabled={payloadDropped}
-                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold flex items-center gap-1"
+                disabled={payloadDropped || !inDropZone || !sensorsReady}
+                title={inDropZone ? 'Deliver the rescue kit' : `Fly within ${dropRadius} m of the target first`}
+                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold flex items-center gap-1"
               >
                 <Zap className="w-3.5 h-3.5 fill-current" />
-                <span>Drop Kit (R)</span>
+              <span>{inDropZone ? 'Drop Kit (R)' : 'Reach 35 m to Drop'}</span>
               </button>
             </div>
           </div>
@@ -1198,7 +1307,7 @@ export const DroneSimulatorView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
                 <h3 className="font-bold text-white font-heading">
-                  TARGET: VEHICLE COLLISION #42
+                  TARGET: {selectedEmergency?.code || 'VEHICLE COLLISION #42'}
                 </h3>
               </div>
               <span className="text-[10px] font-mono text-cyan-400 font-bold">
@@ -1206,11 +1315,30 @@ export const DroneSimulatorView: React.FC = () => {
               </span>
             </div>
 
-            <div className="space-y-1.5 font-mono text-slate-300">
-              <div>Visual: <strong className="text-white">Red sedan overturned on road</strong></div>
-              <div>Casualties: <strong className="text-red-400">1 Critical victim detected</strong></div>
+              <div className="flex items-center justify-between rounded-lg bg-slate-950 px-3 py-2 font-mono text-[11px]">
+                <span className="text-slate-400">MISSION REWARD</span>
+                <strong className="text-amber-300">{missionPoints} points earned</strong>
+              </div>
+              <div className="space-y-1.5 font-mono text-slate-300">
+              <div>Mission: <strong className="text-white">{activeScenario.name.replace(/^Scenario \d+: /, '')}</strong></div>
+              <div>Visual: <strong className="text-white">{selectedEmergency?.title || 'Red sedan overturned on road'}</strong></div>
+              <div>Casualties: <strong className="text-red-400">{selectedEmergency?.potentialVictimsCount || 1} victim(s) reported</strong></div>
               <div>Vitals: <strong className="text-emerald-400">HR 132 BPM • Hemorrhage Risk</strong></div>
-              <div>Objective: <strong className="text-cyan-300">Approach &lt; 35m & airdrop trauma kit</strong></div>
+              <div>Objective: <strong className="text-cyan-300">Reach &lt; {dropRadius} m and deliver the rescue kit{needsLidar ? ' with LiDAR' : ''}{needsRescueMode ? ' in Rescue Mode' : ''}</strong></div>
+              {(needsLidar || needsRescueMode) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button onClick={toggleLidarMode} className={`rounded-lg border px-2.5 py-1.5 font-bold ${simulatorState.lidarActive ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-slate-700 bg-slate-950 text-slate-400'}`}>
+                    LiDAR {simulatorState.lidarActive ? 'ON' : 'OFF'}
+                  </button>
+                  <button onClick={toggleRescueMode} className={`rounded-lg border px-2.5 py-1.5 font-bold ${simulatorState.rescueMode ? 'border-emerald-500 bg-emerald-950 text-emerald-200' : 'border-slate-700 bg-slate-950 text-slate-400'}`}>
+                    Rescue Mode {simulatorState.rescueMode ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+              )}
+              <div className="rounded-lg bg-slate-950 px-3 py-2 text-[11px] text-cyan-200">{missionHint}</div>
+              {inDropZone && !sensorsReady && (
+                <div className="rounded-lg border border-amber-500/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-200">Target reached. Enable the required mission sensors before delivery.</div>
+              )}
             </div>
 
             {missionCompleted && (
@@ -1220,8 +1348,11 @@ export const DroneSimulatorView: React.FC = () => {
                   <span>MISSION DEBRIEF: SUCCESSFUL INTERVENTION!</span>
                 </div>
                 <p className="text-[11px] leading-relaxed">
-                  Autonomous payload delivery confirmed at crash coordinate. Smart tourniquet and vital sign beacon transferred. Predicted survival rate boosted to <strong>94%</strong>.
+                  {activeScenario.name} complete. Rescue supplies reached {selectedEmergency?.locationName || 'the target site'} and the incident record is marked complete. <strong className="text-amber-300">+100 rescue points</strong>
                 </p>
+                <button onClick={restartMission} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-2 text-[11px] font-bold text-slate-950 hover:bg-emerald-400">
+                  <RotateCcw className="h-3.5 w-3.5" /> Fly this mission again
+                </button>
               </div>
             )}
           </div>
@@ -1259,6 +1390,7 @@ export const DroneSimulatorView: React.FC = () => {
                   <button
                     key={sc.id}
                     onClick={() => {
+                      restartMission();
                       setScenario(sc.id);
                       if (sc.id === 'SCENARIO-4') setTimeOfDay('NIGHT_FLIR');
                       else if (sc.id === 'SCENARIO-5') setTimeOfDay('MOUNTAIN_RAIN');

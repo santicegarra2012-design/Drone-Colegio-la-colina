@@ -83,7 +83,8 @@ interface RescueContextType {
   setArmAngle: (joint: 'shoulder' | 'elbow' | 'wrist', angle: number) => void;
   toggleGripper: () => void;
   executeArmTask: (taskName: string) => void;
-  resetArm: () => void;
+  loadArmPayload: (item: string) => void;
+  resetArm: (clearPayload?: boolean) => void;
 
   // Testing Lab
   diagnosticTests: DiagnosticTest[];
@@ -629,9 +630,9 @@ export const RescueProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Robotic Arm State
   const [armState, setArmState] = useState<RoboticArmState>({
-    shoulderAngle: 45,
-    elbowAngle: 75,
-    wristAngle: 30,
+    shoulderAngle: 90,
+    elbowAngle: 90,
+    wristAngle: 90,
     gripperState: 'OPEN',
     gripperPinchPercent: 20,
     currentTask: 'Standby / Ready',
@@ -829,7 +830,6 @@ export const RescueProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSimulatorState((prev) => ({
       ...prev,
       activeScenario: scenarioId,
-      distanceToTargetMeters: scenarioId === 'SCENARIO-2' ? 620 : 380,
     }));
   };
 
@@ -855,32 +855,32 @@ export const RescueProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     sound.playSuccess();
     setArmState((prev) => ({
       ...prev,
-      currentTask: `Executing: ${taskName}`,
-      torqueLoadPercent: Math.min(95, prev.torqueLoadPercent + 25),
+      currentTask: `Completed: ${taskName}`,
+      carriedItem: taskName.includes('Pick up First-Aid')
+        ? 'Medical Trauma Pod'
+        : taskName.includes('Deliver') || taskName.includes('Thermal Blanket') || taskName.includes('Rubble') || taskName.includes('Power Cutoff')
+        ? null
+        : prev.carriedItem,
+      torqueLoadPercent: 18,
     }));
-
-    setTimeout(() => {
-      setArmState((prev) => ({
-        ...prev,
-        currentTask: `Completed: ${taskName}`,
-        carriedItem: taskName.includes('Deliver') ? null : 'Medical Trauma Pod',
-        torqueLoadPercent: 18,
-      }));
-    }, 1800);
   };
 
-  const resetArm = () => {
+  const loadArmPayload = (item: string) => {
+    setArmState((prev) => ({ ...prev, carriedItem: item, currentTask: `Loaded: ${item}` }));
+  };
+
+  const resetArm = (clearPayload = false) => {
     sound.playBeep(700, 0.06);
-    setArmState({
-      shoulderAngle: 45,
-      elbowAngle: 75,
-      wristAngle: 30,
+    setArmState((prev) => ({
+      shoulderAngle: 90,
+      elbowAngle: 90,
+      wristAngle: 90,
       gripperState: 'OPEN',
       gripperPinchPercent: 20,
       currentTask: 'Reset to calibrated park pose',
-      carriedItem: null,
+      carriedItem: clearPayload ? null : prev.carriedItem,
       torqueLoadPercent: 10,
-    });
+    }));
   };
 
   // Diagnostic Test Runner
@@ -988,7 +988,7 @@ export const RescueProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setChargingStations(INITIAL_CHARGERS);
     setDiagnosticTests(INITIAL_TESTS);
     resetSimulator();
-    resetArm();
+    resetArm(true);
     setIsDemoRunning(false);
     setDemoProgressPercent(0);
   };
@@ -1272,6 +1272,7 @@ export const RescueProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setArmAngle,
         toggleGripper,
         executeArmTask,
+        loadArmPayload,
         resetArm,
         diagnosticTests,
         runSingleTest,

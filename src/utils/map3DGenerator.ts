@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export type TimeOfDay = 'DAY_SUNNY' | 'MORNING_GOLDEN' | 'AFTERNOON_CLEAR' | 'MOUNTAIN_RAIN' | 'NIGHT_FLIR';
 
@@ -31,13 +32,13 @@ export const MAP_PRESETS: Record<MapPresetId, MapPreset> = {
     name: 'Colegio Campestre La Colina & Loma Los Balsos',
     tagline: 'Home & School Grounds • Primary Project Focus',
     location: 'Calle 12 Sur # 18 - 173, Loma Los Balsos, El Poblado, Medellín',
-    coordinates: '6.1955° N, -75.5685° W',
-    elevationMeters: 1740,
+    coordinates: '6.18572° N, -75.55944° W',
+    elevationMeters: 1800,
     description: 'School campus with Science & Robotics Wing vertiport, classrooms, synthetic soccer field, entrance gate on Calle 12 Sur, and adjacent student residential neighborhood along winding Loma Los Balsos.',
-    droneLaunchPos: [-45, 14, 20], // Science lab rooftop
-    incidentTargetPos: [50, 1.2, -35], // Soccer field
-    defaultCameraPos: [0, 80, 130],
-    defaultCameraLookAt: [0, 5, 0],
+    droneLaunchPos: [-5, 8, 25], // Administration building
+    incidentTargetPos: [41, 9, -61], // Soccer field
+    defaultCameraPos: [35, 125, 175],
+    defaultCameraLookAt: [30, 5, 5],
     targetType: 'Sports Injury / Debris on Soccer Field',
     suggestedPayload: 'Rapid Medical First-Aid & Ankle Splint Trauma Pod',
   },
@@ -661,276 +662,38 @@ export function setupDaylightSkyAndAtmosphere(
  */
 export function buildLaColinaCampusEnvironment(scene: THREE.Scene) {
   const envGroup = new THREE.Group();
-  envGroup.name = 'MAP_ENV_GROUP';
-
-  // 1. Lush Colombian Mountain Terrain (Andean hillside sloping upward)
-  const terrainGeo = new THREE.PlaneGeometry(600, 600, 48, 48);
-  terrainGeo.rotateX(-Math.PI / 2);
-  const posAttr = terrainGeo.attributes.position;
-  for (let i = 0; i < posAttr.count; i++) {
-    const vx = posAttr.getX(i);
-    const vz = posAttr.getZ(i);
-    // School is on a gentle terrace; hills rise up towards south/east (Loma Los Balsos)
-    let elev = 0;
-    if (vx < -60 || vz > 60 || vx > 90) {
-      elev = Math.max(0, (Math.abs(vx) * 0.12 + vz * 0.14) + Math.sin(vx * 0.02) * Math.cos(vz * 0.02) * 8);
-    } else {
-      elev = Math.sin(vx * 0.01) * 1.5;
-    }
-    posAttr.setY(i, elev);
-  }
-  terrainGeo.computeVertexNormals();
-  const terrainMat = new THREE.MeshStandardMaterial({
-    color: 0x1e5e2e, // Vibrant lush Colombian mountain green
-    roughness: 0.85,
-    metalness: 0.05,
-    flatShading: true,
-  });
-  const terrain = new THREE.Mesh(terrainGeo, terrainMat);
-  terrain.receiveShadow = true;
-  envGroup.add(terrain);
-
-  // 2. 3D Winding Road: Loma Los Balsos / Calle 12 Sur
-  const roadCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(-180, 2.5, 90),
-    new THREE.Vector3(-100, 1.8, 65),
-    new THREE.Vector3(-30, 0.8, 45), // Right in front of school gate
-    new THREE.Vector3(40, 1.2, 50),
-    new THREE.Vector3(120, 2.8, 75),
-    new THREE.Vector3(180, 5.0, 120),
-  ]);
-
-  create3DRealisticRoad(envGroup, roadCurve, {
-    width: 14,
-    curbWidth: 0.7,
-    curbHeight: 0.35,
-    asphaltColor: 0x222b37,
-    curbColor: 0xa8a29e,
-    hasCurbs: true,
-    hasDoubleYellow: true,
-    hasWhiteEdges: true,
-    hasZebraCrossing: true,
-    zebraCrossingT: 0.45, // Pedestrian crossing directly in front of school entrance
-    hasGuardrails: false,
-    hasStreetLights: true,
-    steps: 70,
-  });
-
-  // 3. COLEGIO CAMPESTRE LA COLINA CAMPUS COMPLEX
-  // Building A: Science & Robotics Laboratory Wing (Drone Pad on roof)
-  const scienceWing = new THREE.Group();
-  scienceWing.position.set(-45, 0, 20);
-  const b1 = new THREE.Mesh(
-    new THREE.BoxGeometry(36, 12, 30),
-    new THREE.MeshStandardMaterial({ color: 0x0f2b48, roughness: 0.4 }) // School Navy
-  );
-  b1.position.y = 6;
-  b1.castShadow = true;
-  b1.receiveShadow = true;
-  scienceWing.add(b1);
-
-  // Windows glass
-  const winMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.85 });
-  const w1 = new THREE.Mesh(new THREE.BoxGeometry(32, 3.5, 30.4), winMat);
-  w1.position.y = 7;
-  scienceWing.add(w1);
-
-  // Rooftop Vertiport Landing Pad
-  const padMesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(7, 7, 0.8, 24),
-    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 })
-  );
-  padMesh.position.y = 12.4;
-  scienceWing.add(padMesh);
-
-  const padRing = new THREE.Mesh(
-    new THREE.RingGeometry(3.5, 5, 24),
-    new THREE.MeshBasicMaterial({ color: 0x38b438, side: THREE.DoubleSide }) // School Green
-  );
-  padRing.rotateX(-Math.PI / 2);
-  padRing.position.y = 12.85;
-  scienceWing.add(padRing);
-
-  // Strobe beacon light
-  const pLight = new THREE.PointLight(0x38b438, 2, 18);
-  pLight.position.set(0, 14, 0);
-  scienceWing.add(pLight);
-
-  envGroup.add(scienceWing);
-
-  // Building B: Main Academic Pavilion (Classrooms)
-  const academicPavilion = new THREE.Group();
-  academicPavilion.position.set(-15, 0, -35);
-  const b2 = new THREE.Mesh(
-    new THREE.BoxGeometry(55, 14, 24),
-    new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35 })
-  );
-  b2.position.y = 7;
-  b2.castShadow = true;
-  academicPavilion.add(b2);
-
-  const w2 = new THREE.Mesh(new THREE.BoxGeometry(50, 4, 24.4), winMat);
-  w2.position.y = 8;
-  academicPavilion.add(w2);
-
-  // Solar Panels on roof
-  const solarMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.85 });
-  const solarMesh = new THREE.Mesh(new THREE.BoxGeometry(46, 0.6, 18), solarMat);
-  solarMesh.position.y = 14.3;
-  academicPavilion.add(solarMesh);
-
-  envGroup.add(academicPavilion);
-
-  // Building C: School Administration & Infirmary
-  const adminHub = new THREE.Group();
-  adminHub.position.set(15, 0, 15);
-  const b3 = new THREE.Mesh(
-    new THREE.BoxGeometry(28, 9, 22),
-    new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5 })
-  );
-  b3.position.y = 4.5;
-  b3.castShadow = true;
-  adminHub.add(b3);
-
-  // Red Cross on roof
-  const c1 = new THREE.Mesh(new THREE.BoxGeometry(5, 0.4, 1.8), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-  c1.position.y = 9.25;
-  adminHub.add(c1);
-  const c2 = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 5), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-  c2.position.y = 9.25;
-  adminHub.add(c2);
-
-  envGroup.add(adminHub);
-
-  // 4. Synthetic Soccer / Sports Field (The Incident Zone)
-  const fieldGroup = new THREE.Group();
-  fieldGroup.position.set(50, 0.12, -35);
-
-  const turf = new THREE.Mesh(
-    new THREE.PlaneGeometry(75, 48),
-    new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 }) // Turf green
-  );
-  turf.rotateX(-Math.PI / 2);
-  turf.receiveShadow = true;
-  fieldGroup.add(turf);
-
-  // White boundary lines
-  const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-  const pts = [
-    new THREE.Vector3(-35, 0.15, -22),
-    new THREE.Vector3(35, 0.15, -22),
-    new THREE.Vector3(35, 0.15, 22),
-    new THREE.Vector3(-35, 0.15, 22),
-    new THREE.Vector3(-35, 0.15, -22),
-  ];
-  fieldGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), lineMat));
-
-  // Goalposts
-  const goalGeo = new THREE.BoxGeometry(1, 4.5, 10);
-  const goalMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-  const goalW = new THREE.Mesh(goalGeo, goalMat);
-  goalW.position.set(-35.5, 2.25, 0);
-  fieldGroup.add(goalW);
-  const goalE = new THREE.Mesh(goalGeo, goalMat);
-  goalE.position.set(35.5, 2.25, 0);
-  fieldGroup.add(goalE);
-
-  // Bleachers / Seating
-  const bleachers = new THREE.Mesh(
-    new THREE.BoxGeometry(40, 3, 6),
-    new THREE.MeshStandardMaterial({ color: 0x64748b })
-  );
-  bleachers.position.set(0, 1.5, 27);
-  fieldGroup.add(bleachers);
-
-  envGroup.add(fieldGroup);
-
-  // 5. School Gates & Fencing
-  // Gate 1: Main Campus Entrance on Calle 12 Sur
-  const gate1 = new THREE.Group();
-  gate1.position.set(-30, 0.8, 38);
-  const post1 = new THREE.Mesh(new THREE.BoxGeometry(2, 7, 2), new THREE.MeshStandardMaterial({ color: 0x0f2b48 }));
-  post1.position.set(-6, 3.5, 0);
-  gate1.add(post1);
-  const post2 = new THREE.Mesh(new THREE.BoxGeometry(2, 7, 2), new THREE.MeshStandardMaterial({ color: 0x0f2b48 }));
-  post2.position.set(6, 3.5, 0);
-  gate1.add(post2);
-  const gateSign = new THREE.Mesh(
-    new THREE.BoxGeometry(14, 1.8, 0.6),
-    new THREE.MeshStandardMaterial({ color: 0x0f2b48 })
-  );
-  gateSign.position.set(0, 6.5, 0);
-  gate1.add(gateSign);
-  envGroup.add(gate1);
-
-  // 6. Student Residential Neighborhood (Hillside villas & brick condominiums)
-  const homeMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.7 }); // Colombian Brick
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.5 }); // Terracotta tile roof
-  const whiteWallMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.6 });
-
-  const homeConfigs = [
-    { x: -110, z: 10, w: 22, h: 18, d: 20 },
-    { x: -90, z: -40, w: 20, h: 22, d: 18 },
-    { x: 95, z: 20, w: 24, h: 16, d: 22 },
-    { x: 120, z: -25, w: 22, h: 24, d: 20 },
-    { x: 75, z: 65, w: 18, h: 12, d: 16 },
-  ];
-
-  homeConfigs.forEach((cfg) => {
-    const house = new THREE.Group();
-    house.position.set(cfg.x, 0, cfg.z);
-
-    const body = new THREE.Mesh(new THREE.BoxGeometry(cfg.w, cfg.h, cfg.d), homeMat);
-    body.position.y = cfg.h * 0.5;
-    body.castShadow = true;
-    house.add(body);
-
-    // Terracotta roof
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(cfg.w * 0.7, 5, 4), roofMat);
-    roof.position.y = cfg.h + 2.5;
-    roof.rotation.y = Math.PI / 4;
-    house.add(roof);
-
-    // Windows
-    const win = new THREE.Mesh(new THREE.BoxGeometry(cfg.w * 0.85, cfg.h * 0.4, cfg.d + 0.4), winMat);
-    win.position.y = cfg.h * 0.6;
-    house.add(win);
-
-    envGroup.add(house);
-  });
-
-  // 7. Colombian Pine & Eucalyptus Trees
-  const trunkGeo = new THREE.CylinderGeometry(0.5, 0.7, 4, 6);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18 });
-  const foliageGeo = new THREE.ConeGeometry(3.5, 10, 6);
-  const foliageMat = new THREE.MeshStandardMaterial({ color: 0x166534, flatShading: true });
-
-  for (let i = 0; i < 60; i++) {
-    const tx = (Math.random() - 0.5) * 450;
-    const tz = (Math.random() - 0.5) * 450;
-
-    // Keep clear of soccer field and road
-    if (Math.hypot(tx - 50, tz + 35) > 45 && Math.abs(tz - 55) > 20) {
-      const tree = new THREE.Group();
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 2;
-      tree.add(trunk);
-      const foliage = new THREE.Mesh(foliageGeo, foliageMat);
-      foliage.position.y = 7.5;
-      foliage.castShadow = true;
-      tree.add(foliage);
-      tree.position.set(tx, 0, tz);
-      envGroup.add(tree);
-    }
-  }
-
+  envGroup.name = 'LA_COLINA_CAMPUS_MODEL';
   scene.add(envGroup);
+
+  new GLTFLoader().load(
+    '/models/la-colina-campus.glb',
+    (gltf) => {
+      const campus = gltf.scene;
+      campus.name = 'LA_COLINA_CAMPUS_GLB';
+      campus.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.castShadow = true;
+        object.receiveShadow = true;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          if (!(material instanceof THREE.MeshStandardMaterial)) return;
+          const color = material.color;
+          if (color.g > color.r * 1.15 && color.g > color.b * 1.15) {
+            color.multiplyScalar(1.18);
+            material.emissive.set(0x203d0d);
+            material.emissiveIntensity = 0.35;
+          }
+          material.needsUpdate = true;
+        });
+      });
+      envGroup.add(campus);
+    },
+    undefined,
+    (error) => console.error('Unable to load the La Colina campus model.', error)
+  );
+
   return envGroup;
 }
-
-/**
- * MAP 2: MEDELLÍN DOWNTOWN & EL POBLADO FINANCIAL CENTER (URBAN SKYLINE)
- */
 export function buildMedellinDowntownEnvironment(scene: THREE.Scene) {
   const envGroup = new THREE.Group();
   envGroup.name = 'MAP_ENV_GROUP';

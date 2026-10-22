@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Cpu, 
   RotateCcw, 
@@ -14,6 +14,16 @@ import {
 import { useRescue } from '../context/RescueContext.tsx';
 import { sound } from '../utils/audio.ts';
 
+const ARM_MISSIONS = [
+  { id: 'pick-trauma', task: 'Pick up First-Aid Trauma Pod', desc: 'Grip the pod from the drone mount.', target: [30, 130, 110] as const, gripper: 'CLOSED' as const, requiresItem: null, carries: 'Medical Trauma Pod' },
+  { id: 'deliver-trauma', task: 'Deliver Smart Hemostatic Bandage to Victim Alpha', desc: 'Move the trauma pod to the victim and release it.', target: [80, 110, 90] as const, gripper: 'OPEN' as const, requiresItem: 'Medical Trauma Pod', carries: null },
+  { id: 'pick-blanket', task: 'Deploy Emergency Thermal Blanket Pod', desc: 'The thermal pod is loaded. Reach the patient and release it.', target: [145, 105, 85] as const, gripper: 'OPEN' as const, requiresItem: 'Thermal Blanket Pod', carries: null },
+  { id: 'clear-rubble', task: 'Clear Lightweight Rubble / Debris', desc: 'Clamp the debris at the marked reach pose, then move it clear.', target: [55, 145, 120] as const, gripper: 'CLOSED' as const, requiresItem: null, carries: null },
+  { id: 'power-cutoff', task: 'Press Emergency Vehicle Power Cutoff', desc: 'Reach the cutoff switch and press with the gripper closed.', target: [115, 65, 155] as const, gripper: 'CLOSED' as const, requiresItem: null, carries: null },
+];
+
+const ANGLE_TOLERANCE = 8;
+
 export const RoboticArmView: React.FC = () => {
   const { 
     armState, 
@@ -21,10 +31,48 @@ export const RoboticArmView: React.FC = () => {
     toggleGripper, 
     executeArmTask, 
     resetArm,
+    loadArmPayload,
     showAiExplanation 
   } = useRescue();
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [activeMissionId, setActiveMissionId] = useState<string | null>(null);
+  const [completedMissionIds, setCompletedMissionIds] = useState<string[]>([]);
+  const [missionPoints, setMissionPoints] = useState(0);
+  const [interactionRevision, setInteractionRevision] = useState(0);
+  const missionStartRevision = useRef(0);
+  const activeMission = ARM_MISSIONS.find((mission) => mission.id === activeMissionId) ?? null;
+  const poseReady = activeMission ? activeMission.target.every((target, index) =>
+    Math.abs([armState.shoulderAngle, armState.elbowAngle, armState.wristAngle][index] - target) <= ANGLE_TOLERANCE
+  ) : false;
+  const gripperReady = activeMission ? armState.gripperState === activeMission.gripper : false;
+  const itemReady = activeMission ? armState.carriedItem === activeMission.requiresItem : false;
+  const hasManipulated = activeMission ? interactionRevision > missionStartRevision.current : false;
+
+  const handleJointChange = (joint: 'shoulder' | 'elbow' | 'wrist', angle: number) => {
+    setInteractionRevision((revision) => revision + 1);
+    setArmAngle(joint, angle);
+  };
+
+  const handleGripperToggle = () => {
+    setInteractionRevision((revision) => revision + 1);
+    toggleGripper();
+  };
+
+  const startMission = (missionId: string) => {
+    missionStartRevision.current = interactionRevision;
+    setActiveMissionId(missionId);
+    if (missionId === 'pick-blanket' && !armState.carriedItem) loadArmPayload('Thermal Blanket Pod');
+    sound.playBeep(980, 0.06);
+  };
+
+  const finishMission = () => {
+    if (!activeMission || !hasManipulated || !poseReady || !gripperReady || !itemReady) return;
+    executeArmTask(activeMission.task);
+    setCompletedMissionIds((completed) => [...new Set([...completed, activeMission.id])]);
+    setMissionPoints((points) => points + 100);
+    setActiveMissionId(null);
+  };
 
   // 2D Arm Kinematics Canvas Render Loop
   useEffect(() => {
@@ -43,7 +91,7 @@ export const RoboticArmView: React.FC = () => {
 
       // Base mount on top or bottom
       const baseX = w / 2;
-      const baseY = 80; // Drone belly mounting plate
+      const baseY = 200; // Keep the full arm workspace visible below the drone mount
 
       // Drone Chassis base plate
       ctx.fillStyle = '#1e293b';
@@ -194,7 +242,7 @@ export const RoboticArmView: React.FC = () => {
 
         ctx.fillStyle = '#ffffff';
         ctx.font = '8px Chakra Petch';
-        ctx.fillText('AID POD', -15, 20);
+        ctx.fillText(armState.carriedItem.includes('Thermal') ? 'THERMAL POD' : armState.carriedItem.includes('Trauma') ? 'AID POD' : 'PAYLOAD', -18, 20);
         ctx.restore();
       }
 
@@ -241,7 +289,7 @@ export const RoboticArmView: React.FC = () => {
         {/* Quick Reset */}
         <div className="flex items-center gap-2">
           <button
-            onClick={resetArm}
+            onClick={() => resetArm()}
             className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white flex items-center gap-1.5 text-xs font-semibold"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -265,7 +313,7 @@ export const RoboticArmView: React.FC = () => {
           <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs font-mono flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-cyan-300">
               <Activity className="w-3.5 h-3.5 text-cyan-400" />
-              <span>TASK: {armState.currentTask}</span>
+              <span>TASK: {activeMission ? `IN PROGRESS: ${activeMission.task}` : armState.currentTask}</span>
             </div>
             <span className="text-slate-600">|</span>
             <span className="text-emerald-400 font-bold">TORQUE: {armState.torqueLoadPercent}%</span>
@@ -274,7 +322,7 @@ export const RoboticArmView: React.FC = () => {
           {/* Quick Gripper Button floating on canvas */}
           <div className="absolute bottom-4 right-4">
             <button
-              onClick={toggleGripper}
+              onClick={handleGripperToggle}
               className={`px-4 py-2 rounded-xl font-bold text-xs font-heading shadow-xl transition-all ${
                 armState.gripperState === 'OPEN'
                   ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
@@ -306,7 +354,7 @@ export const RoboticArmView: React.FC = () => {
                 min="0"
                 max="180"
                 value={armState.shoulderAngle}
-                onChange={(e) => setArmAngle('shoulder', Number(e.target.value))}
+                onChange={(e) => handleJointChange('shoulder', Number(e.target.value))}
                 className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -322,7 +370,7 @@ export const RoboticArmView: React.FC = () => {
                 min="0"
                 max="180"
                 value={armState.elbowAngle}
-                onChange={(e) => setArmAngle('elbow', Number(e.target.value))}
+                onChange={(e) => handleJointChange('elbow', Number(e.target.value))}
                 className="w-full accent-emerald-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -338,7 +386,7 @@ export const RoboticArmView: React.FC = () => {
                 min="0"
                 max="180"
                 value={armState.wristAngle}
-                onChange={(e) => setArmAngle('wrist', Number(e.target.value))}
+                onChange={(e) => handleJointChange('wrist', Number(e.target.value))}
                 className="w-full accent-sky-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
               />
             </div>
@@ -351,26 +399,76 @@ export const RoboticArmView: React.FC = () => {
               Automated Simulated Rescue Tasks:
             </h3>
 
-            <div className="space-y-2">
-              {[
-                { task: 'Pick up First-Aid Trauma Pod', desc: 'Pre-latches pod from belly mount' },
-                { task: 'Deliver Smart Hemostatic Bandage to Victim Alpha', desc: 'Deposits pressurized sterile dressing' },
-                { task: 'Deploy Emergency Thermal Blanket Pod', desc: 'Drops self-unfolding insulated wrap' },
-                { task: 'Clear Lightweight Rubble / Debris', desc: 'Displaces obstruction up to 4.8 kg' },
-                { task: 'Press Emergency Vehicle Power Cutoff', desc: 'Actuates high-voltage vehicle kill switch' },
-              ].map((item, idx) => (
+            <div className="flex items-center justify-between rounded-lg bg-slate-950 px-3 py-2 text-xs">
+              <span className="text-slate-400">Mission score</span>
+              <strong className="text-amber-300">{missionPoints} points</strong>
+            </div>
+            {activeMission && (
+              <div className="rounded-xl border border-cyan-500/40 bg-cyan-950/30 p-3 space-y-2 text-[11px]">
+                <div className="font-bold text-cyan-200">ACTIVE: {activeMission.task}</div>
+                <div className="text-slate-300">Move the shoulder, elbow, and wrist sliders to their targets (±{ANGLE_TOLERANCE}°), set the gripper to {activeMission.gripper}, then confirm.</div>
+                <div className="grid grid-cols-3 gap-1.5 font-mono text-[10px]">
+                  {(['shoulderAngle', 'elbowAngle', 'wristAngle'] as const).map((joint, index) => {
+                    const current = armState[joint];
+                    const target = activeMission.target[index];
+                    const ready = Math.abs(current - target) <= ANGLE_TOLERANCE;
+                    const label = ['Shoulder', 'Elbow', 'Wrist'][index];
+                    return (
+                      <div key={joint} className={`rounded-md px-2 py-1 ${ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-900 text-slate-400'}`}>
+                        {label}: {current}° → {target}°
+                      </div>
+                    );
+                  })}
+                </div>
+                {activeMission.requiresItem && <div className="text-amber-200">Required payload: {activeMission.requiresItem}</div>}
+                <div className="flex gap-2">
+                  {[['Pose', poseReady], ['Gripper', gripperReady], ['Payload', itemReady]].map(([label, ready]) => (
+                    <span key={String(label)} className={`rounded-full px-2 py-1 ${ready ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}`}>
+                      {ready ? '✓' : '○'} {String(label)}
+                    </span>
+                  ))}
+                </div>
                 <button
-                  key={idx}
-                  onClick={() => executeArmTask(item.task)}
-                  className="w-full p-2.5 rounded-xl bg-slate-950 hover:bg-slate-800/80 border border-slate-800 hover:border-cyan-500/40 text-left transition-all group"
+                  onClick={finishMission}
+                  disabled={!hasManipulated || !poseReady || !gripperReady || !itemReady}
+                  className="w-full rounded-lg bg-emerald-500 px-3 py-2 font-bold text-slate-950 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
+                >
+                  {!hasManipulated ? 'Move a joint or toggle the gripper to begin' : !poseReady ? 'Match the target joint angles' : !gripperReady ? `Set gripper to ${activeMission.gripper}` : !itemReady ? `Load ${activeMission.requiresItem || 'required payload'}` : 'Confirm task • earn 100 points'}
+                </button>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {ARM_MISSIONS.map((item) => {
+                const completed = completedMissionIds.includes(item.id);
+                const selected = activeMissionId === item.id;
+                return (
+                <button
+                  key={item.id}
+                  onClick={() => startMission(item.id)}
+                  disabled={completed}
+                  className={`w-full p-2.5 rounded-xl border text-left transition-all group ${selected ? 'border-cyan-500 bg-cyan-950/50' : completed ? 'border-emerald-800 bg-emerald-950/20 opacity-70' : 'bg-slate-950 border-slate-800 hover:bg-slate-800/80 hover:border-cyan-500/40'}`}
                 >
                   <div className="text-xs font-bold text-slate-200 group-hover:text-cyan-300 font-heading">
-                    {item.task}
+                    {completed ? '✓ ' : selected ? '▶ ' : ''}{item.task}
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">{item.desc}</p>
                 </button>
-              ))}
+                );
+              })}
             </div>
+            <div className="text-[11px] text-slate-500">Start a task, then use the joint sliders and gripper. Each completed task earns 100 points.</div>
+            <button
+              onClick={() => {
+                setActiveMissionId(null);
+                setCompletedMissionIds([]);
+                setMissionPoints(0);
+                resetArm(true);
+              }}
+              className="w-full rounded-xl border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs font-bold text-amber-200 hover:bg-amber-900/40"
+            >
+              Reset mission progress
+            </button>
 
             {/* Why Button */}
             <button

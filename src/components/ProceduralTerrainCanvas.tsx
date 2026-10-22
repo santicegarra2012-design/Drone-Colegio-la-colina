@@ -92,9 +92,11 @@ export const ProceduralTerrainCanvas: React.FC<ProceduralTerrainCanvasProps> = (
     }
 
     // Grid helper overlay
-    const gridHelper = new THREE.GridHelper(400, 40, 0x06b6d4, 0x1e293b);
-    gridHelper.position.y = 0.05;
-    scene.add(gridHelper);
+    if (activePreset !== 'LA_COLINA_CAMPUS') {
+      const gridHelper = new THREE.GridHelper(400, 40, 0x06b6d4, 0x1e293b);
+      gridHelper.position.y = 0.05;
+      scene.add(gridHelper);
+    }
 
     // Mouse drag orbital rotation controls
     let isMouseDown = false;
@@ -103,6 +105,7 @@ export const ProceduralTerrainCanvas: React.FC<ProceduralTerrainCanvasProps> = (
     let sphericalTheta = 0;
     let sphericalPhi = Math.PI / 4;
     let sphericalRadius = 150;
+    const orbitTarget = new THREE.Vector3(...presetData.defaultCameraLookAt);
 
     const onMouseDown = (e: MouseEvent) => {
       isMouseDown = true;
@@ -143,13 +146,13 @@ export const ProceduralTerrainCanvas: React.FC<ProceduralTerrainCanvasProps> = (
 
       if (isRotating && !isMouseDown) {
         angle += 0.002;
-        camera.position.x = Math.sin(angle) * sphericalRadius;
-        camera.position.z = Math.cos(angle) * sphericalRadius;
-        camera.position.y = Math.sin(sphericalPhi) * sphericalRadius;
+        camera.position.x = orbitTarget.x + Math.sin(angle) * sphericalRadius;
+        camera.position.z = orbitTarget.z + Math.cos(angle) * sphericalRadius;
+        camera.position.y = orbitTarget.y + Math.sin(sphericalPhi) * sphericalRadius;
       } else if (isMouseDown) {
-        camera.position.x = sphericalRadius * Math.sin(sphericalPhi) * Math.sin(sphericalTheta);
-        camera.position.y = sphericalRadius * Math.cos(sphericalPhi);
-        camera.position.z = sphericalRadius * Math.sin(sphericalPhi) * Math.cos(sphericalTheta);
+        camera.position.x = orbitTarget.x + sphericalRadius * Math.sin(sphericalPhi) * Math.sin(sphericalTheta);
+        camera.position.y = orbitTarget.y + sphericalRadius * Math.cos(sphericalPhi);
+        camera.position.z = orbitTarget.z + sphericalRadius * Math.sin(sphericalPhi) * Math.cos(sphericalTheta);
       }
 
       camera.lookAt(
@@ -197,7 +200,7 @@ export const ProceduralTerrainCanvas: React.FC<ProceduralTerrainCanvasProps> = (
         <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none z-20">
           <div className="bg-slate-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-cyan-500/30 text-xs font-mono text-cyan-300 pointer-events-auto flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            <span>3D PROCEDURAL TERRAIN: {MAP_PRESETS[activePreset]?.name || activePreset}</span>
+            <span>3D CAMPUS MODEL: {MAP_PRESETS[activePreset]?.name || activePreset}</span>
           </div>
 
           <div className="flex items-center gap-2 pointer-events-auto">

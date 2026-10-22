@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import confetti from 'canvas-confetti';
 import { 
   Play, 
@@ -63,14 +64,19 @@ export const LaColinaDigitalTwinView: React.FC = () => {
   const lidarPointsRef = useRef<THREE.Points | null>(null);
 
   // Coordinates on campus
-  // Science Lab Rooftop (Drone Base): x: -45, y: 14, z: 20
-  // Sports Field (Emergency Site): x: 50, y: 1.2, z: -35
-  const droneBasePos = useRef(new THREE.Vector3(-45, 14, 20));
-  const emergencyPos = useRef(new THREE.Vector3(50, 1.2, -35));
-  const droneCurrentPos = useRef(new THREE.Vector3(-45, 14, 20));
+  // The GLB is Y-up; the source school's northing maps to negative Z. These points
+  // align the staging pad with the administration roof and the target with midfield.
+  const droneBasePos = useRef(new THREE.Vector3(-5, 8, 25));
+  const emergencyPos = useRef(new THREE.Vector3(41, 8, -61));
+  const droneCurrentPos = useRef(new THREE.Vector3(-5, 8, 25));
 
-  const cameraTarget = useRef(new THREE.Vector3(0, 0, 0));
-  const cameraTargetPos = useRef(new THREE.Vector3(0, 75, 125));
+  const cameraTarget = useRef(new THREE.Vector3(22, 3, 20));
+  const cameraTargetPos = useRef(new THREE.Vector3(25, 105, 170));
+  const currentStepRef = useRef(currentStep);
+
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
 
   // The 10 Simulation Steps requested by the user
   const STEPS: SimulationStep[] = [
@@ -80,8 +86,8 @@ export const LaColinaDigitalTwinView: React.FC = () => {
       status: 'Scanning campus...',
       icon: Satellite,
       description: 'Multispectral orbital sensor sweeps Colegio Campestre La Colina campus grounds for heat anomalies or distress calls.',
-      cameraPos: [0, 130, 80],
-      cameraLookAt: [0, 0, 0],
+      cameraPos: [25, 155, 40],
+      cameraLookAt: [22, 3, 20],
     },
     {
       step: 2,
@@ -89,35 +95,35 @@ export const LaColinaDigitalTwinView: React.FC = () => {
       status: 'Possible emergency detected.',
       icon: AlertTriangle,
       description: 'Kinetic impact and thermal anomaly flagged at the synthetic grass soccer field. Severity: High.',
-      cameraPos: [65, 30, -10],
-      cameraLookAt: [50, 1.5, -35],
+      cameraPos: [82, 38, -32],
+      cameraLookAt: [41, 8, -61],
     },
     {
       step: 3,
       title: '3. 🧠 AI',
       status: 'Analyzing location, access, obstacles and simulated victims...',
       icon: Brain,
-      description: 'AI model evaluates campus building heights, eucalyptus trees, wind currents, and calculates obstacle-free vectors.',
-      cameraPos: [10, 45, 10],
-      cameraLookAt: [15, 5, -15],
+      description: 'AI model evaluates the real campus buildings, sloped terrain, tree cover, and wind, then plans an obstacle-aware route.',
+      cameraPos: [15, 65, 32],
+      cameraLookAt: [20, 5, 12],
     },
     {
       step: 4,
       title: '4. 🚁 Drone',
       status: 'Drone 01 dispatched.',
       icon: Send,
-      description: 'Drone 01 spools up brushless motors on the Science & Robotics Wing rooftop pad and ascends to 25m cruise altitude.',
-      cameraPos: [-35, 24, 40],
-      cameraLookAt: [-45, 14, 20],
+      description: 'Drone 01 launches from the school-side staging pad and climbs above the campus before crossing the sloped grounds.',
+      cameraPos: [4, 25, 48],
+      cameraLookAt: [-5, 9, 25],
     },
     {
       step: 5,
       title: '5. 🗺️ Navigation',
       status: 'Route calculated across campus.',
       icon: Compass,
-      description: 'Flight corridor mapped: climbs above academic pavilion, curves over central quad, avoiding stadium light poles.',
-      cameraPos: [0, 60, 40],
-      cameraLookAt: [10, 10, -10],
+      description: 'Flight corridor follows the campus layout from the administration area to the soccer field, accounting for terrain and buildings.',
+      cameraPos: [15, 85, 45],
+      cameraLookAt: [24, 6, -18],
     },
     {
       step: 6,
@@ -125,8 +131,8 @@ export const LaColinaDigitalTwinView: React.FC = () => {
       status: 'Area scanned.',
       icon: Eye,
       description: 'Computer-vision gimbal camera classifies target sector, sports equipment, access paths, and bystanders.',
-      cameraPos: [40, 20, -20],
-      cameraLookAt: [50, 1.5, -35],
+      cameraPos: [65, 24, -30],
+      cameraLookAt: [41, 8, -61],
     },
     {
       step: 7,
@@ -134,8 +140,8 @@ export const LaColinaDigitalTwinView: React.FC = () => {
       status: 'Simulated person detected.',
       icon: HeartPulse,
       description: 'Through-obstruction biometric radar localizes simulated student: Heart Rate: 124 BPM, conscious, ankle immobilizer needed.',
-      cameraPos: [56, 10, -28],
-      cameraLookAt: [50, 1.5, -35],
+      cameraPos: [49, 17, -47],
+      cameraLookAt: [41, 8, -61],
     },
     {
       step: 8,
@@ -143,17 +149,17 @@ export const LaColinaDigitalTwinView: React.FC = () => {
       status: 'Emergency information transmitted to simulated command center.',
       icon: Radio,
       description: 'Real-time telemetry packet transmitted to campus infirmary and central emergency medical dispatch.',
-      cameraPos: [0, 45, 60],
-      cameraLookAt: [0, 0, 0],
+      cameraPos: [25, 80, 75],
+      cameraLookAt: [22, 3, 20],
     },
     {
       step: 9,
       title: '9. 🏥 Response',
       status: 'Recommended medical response location identified.',
       icon: Hospital,
-      description: 'Campus Emergency Gate 2 designated as optimal ground ambulance entry point (110m flat stretcher route).',
-      cameraPos: [70, 35, 25],
-      cameraLookAt: [60, 2, -10],
+      description: 'The Calle 12 Sur entrance is selected as the simulated ambulance access point, with a ground route to the soccer field.',
+      cameraPos: [40, 42, 65],
+      cameraLookAt: [20, 4, 28],
     },
     {
       step: 10,
@@ -161,8 +167,8 @@ export const LaColinaDigitalTwinView: React.FC = () => {
       status: 'Rescue simulation completed.',
       icon: CheckCircle2,
       description: 'Medical trauma pod delivered directly to simulated victim. Campus response time: 48 seconds!',
-      cameraPos: [45, 15, -15],
-      cameraLookAt: [50, 1.5, -35],
+      cameraPos: [53, 21, -36],
+      cameraLookAt: [41, 8, -61],
     },
   ];
 
@@ -187,8 +193,8 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     if (droneGroupRef.current) {
       droneGroupRef.current.position.copy(droneBasePos.current);
     }
-    cameraTargetPos.current.set(0, 75, 125);
-    cameraTarget.current.set(0, 0, 0);
+    cameraTargetPos.current.set(25, 105, 170);
+    cameraTarget.current.set(22, 3, 20);
   };
 
   const executeStepAction = (stepNumber: number) => {
@@ -240,7 +246,7 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     return () => clearTimeout(timer);
   }, [isSimRunning, currentStep]);
 
-  // Build Three.js 3D Model of Colegio Campestre La Colina Campus
+  // Build Three.js scene once; keep the detailed school mesh mounted while the mission advances.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -251,13 +257,13 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     // 1. Scene & Atmosphere
     const scene = new THREE.Scene();
     sceneRef.current = scene;
-    scene.background = new THREE.Color(0x0a1626);
-    scene.fog = new THREE.FogExp2(0x0a1626, 0.0035);
+    scene.background = new THREE.Color(0xa9d9ff);
+    scene.fog = new THREE.FogExp2(0xa9d9ff, 0.00045);
 
     // 2. Camera
     const camera = new THREE.PerspectiveCamera(50, width / height, 1, 2000);
-    camera.position.set(0, 75, 125);
-    camera.lookAt(0, 0, 0);
+    camera.position.set(25, 105, 170);
+    camera.lookAt(22, 3, 20);
     cameraRef.current = camera;
 
     // 3. Renderer
@@ -265,226 +271,56 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
     rendererRef.current = renderer;
 
     container.innerHTML = '';
     container.appendChild(renderer.domElement);
 
     // 4. Lights
-    const ambientLight = new THREE.AmbientLight(0x64748b, 1.6);
+    const ambientLight = new THREE.HemisphereLight(0xe8f4ff, 0x71864a, 3.0);
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 2);
-    sunLight.position.set(90, 150, 70);
+    const sunLight = new THREE.DirectionalLight(0xfff2d8, 4.2);
+    sunLight.position.set(45, 120, 35);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
     scene.add(sunLight);
 
-    // 5. Campus Ground / Topography
-    const campusGroundGeo = new THREE.PlaneGeometry(350, 260, 32, 32);
-    campusGroundGeo.rotateX(-Math.PI / 2);
-    const groundMat = new THREE.MeshStandardMaterial({
-      color: 0x143c22, // Lush Colombian campus green
-      roughness: 0.8,
-      metalness: 0.1,
-    });
-    const campusGround = new THREE.Mesh(campusGroundGeo, groundMat);
-    campusGround.receiveShadow = true;
-    scene.add(campusGround);
-
-    // Campus Perimeter Fence / Border
-    const fenceGeo = new THREE.BoxGeometry(350, 2, 2);
-    const fenceMat = new THREE.MeshStandardMaterial({ color: 0x334155 });
-    const fenceN = new THREE.Mesh(fenceGeo, fenceMat);
-    fenceN.position.set(0, 1, -130);
-    scene.add(fenceN);
-    const fenceS = new THREE.Mesh(fenceGeo, fenceMat);
-    fenceS.position.set(0, 1, 130);
-    scene.add(fenceS);
-
-    // 6. SOCCER / SPORTS FIELD (The Simulation Target Area)
-    const fieldGroup = new THREE.Group();
-    fieldGroup.position.set(50, 0.1, -35);
-
-    // Green synthetic turf
-    const turfMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 50),
-      new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 })
+    // Load the real, slope-following architectural campus model used by the standalone school viewer.
+    // Its GLB uses +Y as up and campus ground coordinates are encoded as (x, -northing).
+    let isMounted = true;
+    const campusLoader = new GLTFLoader();
+    campusLoader.load(
+      '/models/la-colina-campus.glb',
+      (gltf) => {
+        if (!isMounted) return;
+        const campus = gltf.scene;
+        campus.name = 'La Colina surveyed campus model';
+        campus.traverse((object) => {
+          if (object instanceof THREE.Mesh) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach((material) => {
+              if (material instanceof THREE.MeshStandardMaterial) {
+                const baseColor = material.color;
+                if (baseColor.g > baseColor.r * 1.2 && baseColor.g > baseColor.b * 1.2) {
+                  baseColor.multiplyScalar(1.25);
+                  material.emissive.set(0x30551c);
+                  material.emissiveIntensity = 0.85;
+                }
+              }
+            });
+          }
+        });
+        scene.add(campus);
+      },
+      undefined,
+      (error) => console.error('Could not load the La Colina campus model:', error),
     );
-    turfMesh.rotateX(-Math.PI / 2);
-    turfMesh.receiveShadow = true;
-    fieldGroup.add(turfMesh);
-
-    // Field Boundary White Lines
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-    const linePts = [
-      new THREE.Vector3(-38, 0.2, -23),
-      new THREE.Vector3(38, 0.2, -23),
-      new THREE.Vector3(38, 0.2, 23),
-      new THREE.Vector3(-38, 0.2, 23),
-      new THREE.Vector3(-38, 0.2, -23),
-    ];
-    const boundaryLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePts), lineMat);
-    fieldGroup.add(boundaryLine);
-
-    // Midfield circle
-    const centerCircle = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(
-        new THREE.Path().absarc(0, 0, 8, 0, Math.PI * 2, true).getPoints(32).map((p) => new THREE.Vector3(p.x, 0.2, p.y))
-      ),
-      lineMat
-    );
-    fieldGroup.add(centerCircle);
-
-    // Goalposts
-    const goalGeo = new THREE.BoxGeometry(1.2, 5, 12);
-    const goalMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
-    const goalWest = new THREE.Mesh(goalGeo, goalMat);
-    goalWest.position.set(-39, 2.5, 0);
-    fieldGroup.add(goalWest);
-    const goalEast = new THREE.Mesh(goalGeo, goalMat);
-    goalEast.position.set(39, 2.5, 0);
-    fieldGroup.add(goalEast);
-
-    scene.add(fieldGroup);
-
-    // 7. BUILDINGS OF COLEGIO CAMPESTRE LA COLINA
-
-    // Building A: Main Academic Pavilion (Multistory, Navy/White accents)
-    const mainBuilding = new THREE.Group();
-    mainBuilding.position.set(-20, 0, -40);
-
-    const b1 = new THREE.Mesh(
-      new THREE.BoxGeometry(60, 14, 26),
-      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 })
-    );
-    b1.position.y = 7;
-    b1.castShadow = true;
-    mainBuilding.add(b1);
-
-    // Windows band
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.9 });
-    const win = new THREE.Mesh(new THREE.BoxGeometry(56, 4, 26.4), glassMat);
-    win.position.y = 8;
-    mainBuilding.add(win);
-
-    // Roof Solar Panels
-    const solarMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
-    const solar = new THREE.Mesh(new THREE.BoxGeometry(50, 0.8, 20), solarMat);
-    solar.position.y = 14.5;
-    mainBuilding.add(solar);
-
-    scene.add(mainBuilding);
-
-    // Building B: Science & Robotics Laboratory Wing (The Home of Rescue AI)
-    const roboticsWing = new THREE.Group();
-    roboticsWing.position.set(-45, 0, 20);
-
-    const b2 = new THREE.Mesh(
-      new THREE.BoxGeometry(40, 12, 35),
-      new THREE.MeshStandardMaterial({ color: 0x0f2b48, roughness: 0.4 }) // La Colina Navy
-    );
-    b2.position.y = 6;
-    b2.castShadow = true;
-    roboticsWing.add(b2);
-
-    // Rooftop Drone Vertiport Landing Pad
-    const pad = new THREE.Mesh(
-      new THREE.CylinderGeometry(7, 7, 0.8, 16),
-      new THREE.MeshStandardMaterial({ color: 0x1e293b })
-    );
-    pad.position.y = 12.4;
-    roboticsWing.add(pad);
-
-    const padRing = new THREE.Mesh(
-      new THREE.RingGeometry(3.5, 5, 16),
-      new THREE.MeshBasicMaterial({ color: 0x38b438, side: THREE.DoubleSide }) // La Colina Green
-    );
-    padRing.rotateX(-Math.PI / 2);
-    padRing.position.y = 12.85;
-    roboticsWing.add(padRing);
-
-    scene.add(roboticsWing);
-
-    // Building C: Administration & Medical Infirmary Hub
-    const adminHub = new THREE.Group();
-    adminHub.position.set(15, 0, 30);
-    const b3 = new THREE.Mesh(
-      new THREE.BoxGeometry(32, 10, 28),
-      new THREE.MeshStandardMaterial({ color: 0x334155 })
-    );
-    b3.position.y = 5;
-    b3.castShadow = true;
-    adminHub.add(b3);
-
-    // Medical Red Cross on Infirmary roof
-    const cross1 = new THREE.Mesh(new THREE.BoxGeometry(6, 0.5, 2), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-    cross1.position.y = 10.3;
-    adminHub.add(cross1);
-    const cross2 = new THREE.Mesh(new THREE.BoxGeometry(2, 0.5, 6), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
-    cross2.position.y = 10.3;
-    adminHub.add(cross2);
-
-    scene.add(adminHub);
-
-    // 8. CAMPUS PATHWAYS & STUDENT COURTYARD
-    const pathMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.9 });
-    const mainWalkway = new THREE.Mesh(new THREE.BoxGeometry(16, 0.15, 140), pathMat);
-    mainWalkway.position.set(-10, 0.1, 0);
-    scene.add(mainWalkway);
-
-    const crossWalkway = new THREE.Mesh(new THREE.BoxGeometry(120, 0.15, 12), pathMat);
-    crossWalkway.position.set(0, 0.1, 0);
-    scene.add(crossWalkway);
-
-    // 9. CAMPUS GATES
-    // Gate 1: Main Campus Entrance
-    const gate1 = new THREE.Group();
-    gate1.position.set(-140, 0, 0);
-    const p1 = new THREE.Mesh(new THREE.BoxGeometry(3, 8, 3), new THREE.MeshStandardMaterial({ color: 0x0e2b4d }));
-    p1.position.set(0, 4, -8);
-    gate1.add(p1);
-    const p2 = new THREE.Mesh(new THREE.BoxGeometry(3, 8, 3), new THREE.MeshStandardMaterial({ color: 0x0e2b4d }));
-    p2.position.set(0, 4, 8);
-    gate1.add(p2);
-    scene.add(gate1);
-
-    // Gate 2: Sports Field Emergency Access (for Ambulances)
-    const gate2 = new THREE.Group();
-    gate2.position.set(120, 0, -35);
-    const p3 = new THREE.Mesh(new THREE.BoxGeometry(3, 8, 3), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
-    p3.position.set(0, 4, -8);
-    gate2.add(p3);
-    const p4 = new THREE.Mesh(new THREE.BoxGeometry(3, 8, 3), new THREE.MeshStandardMaterial({ color: 0xef4444 }));
-    p4.position.set(0, 4, 8);
-    gate2.add(p4);
-    scene.add(gate2);
-
-    // 10. TREES AROUND CAMPUS (Colombian Pine & Eucalyptus)
-    const treeTrunkGeo = new THREE.CylinderGeometry(0.6, 0.8, 5, 6);
-    const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
-    const treeFoliageGeo = new THREE.ConeGeometry(3.5, 9, 6);
-    const treeFoliageMat = new THREE.MeshStandardMaterial({ color: 0x166534, flatShading: true });
-
-    for (let i = 0; i < 45; i++) {
-      const tree = new THREE.Group();
-      const trunk = new THREE.Mesh(treeTrunkGeo, treeTrunkMat);
-      trunk.position.y = 2.5;
-      tree.add(trunk);
-      const foliage = new THREE.Mesh(treeFoliageGeo, treeFoliageMat);
-      foliage.position.y = 8;
-      tree.add(foliage);
-
-      // Scatter outside sports field and buildings
-      const tx = (Math.random() - 0.5) * 300;
-      const tz = (Math.random() - 0.5) * 220;
-      // Avoid center field and buildings
-      if (Math.abs(tx - 50) > 45 || Math.abs(tz + 35) > 30) {
-        tree.position.set(tx, 0, tz);
-        scene.add(tree);
-      }
-    }
 
     // 11. EMERGENCY INCIDENT SITE (On Soccer Field)
     const emergencySite = new THREE.Group();
@@ -580,9 +416,9 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     // 13. Glowing 3D Flight Corridor Ribbon Across Campus
     const routePts = [
       droneBasePos.current.clone(),
-      new THREE.Vector3(-30, 24, 10),
-      new THREE.Vector3(0, 22, -10),
-      new THREE.Vector3(25, 18, -25),
+      new THREE.Vector3(4, 20, 2),
+      new THREE.Vector3(28, 24, -22),
+      new THREE.Vector3(42, 19, -42),
       emergencyPos.current.clone().add(new THREE.Vector3(0, 10, 0)),
     ];
     const routeCurve = new THREE.CatmullRomCurve3(routePts);
@@ -591,6 +427,22 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     const routeLine = new THREE.Line(routeLineGeo, routeLineMat);
     flightRouteLineRef.current = routeLine;
     scene.add(routeLine);
+
+    // Visible rooftop launch pad placed on the model's administration wing.
+    const launchPad = new THREE.Mesh(
+      new THREE.CylinderGeometry(4.2, 4.2, 0.22, 32),
+      new THREE.MeshStandardMaterial({ color: 0x132536, roughness: 0.7 })
+    );
+    launchPad.position.set(-5, 6.2, 25);
+    launchPad.receiveShadow = true;
+    scene.add(launchPad);
+    const launchRing = new THREE.Mesh(
+      new THREE.RingGeometry(2.2, 2.7, 32),
+      new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide })
+    );
+    launchRing.rotation.x = -Math.PI / 2;
+    launchRing.position.set(-5, 6.34, 25);
+    scene.add(launchRing);
 
     // 14. LiDAR Point Cloud at Incident
     const lCount = 200;
@@ -612,7 +464,7 @@ export const LaColinaDigitalTwinView: React.FC = () => {
 
     // 15. Satellite Scan Laser Plane
     const scanLaserMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(280, 4),
+      new THREE.PlaneGeometry(220, 4),
       new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
     );
     scanLaserMesh.rotateX(-Math.PI / 2);
@@ -628,9 +480,10 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     const animate = () => {
       animId = requestAnimationFrame(animate);
       clock += 0.016;
+      const activeStep = currentStepRef.current;
 
       // Spin Drone Propellers when dispatched (Step >= 4)
-      if (currentStep >= 4) {
+      if (activeStep >= 4) {
         dronePropsRef.current.forEach((p, idx) => {
           p.rotation.y += idx % 2 === 0 ? 0.4 : -0.4;
         });
@@ -638,14 +491,14 @@ export const LaColinaDigitalTwinView: React.FC = () => {
 
       // Move Drone 01 along flight corridor
       if (droneGroupRef.current) {
-        if (currentStep >= 4 && currentStep <= 6) {
+        if (activeStep >= 4 && activeStep <= 6) {
           // Flying across campus
-          const t = Math.min(1, (currentStep - 4 + 0.3) / 2.3);
+          const t = Math.min(1, (activeStep - 4 + 0.3) / 2.3);
           const targetPt = routeCurve.getPoint(t);
           droneCurrentPos.current.lerp(targetPt, 0.04);
           droneGroupRef.current.position.copy(droneCurrentPos.current);
           droneGroupRef.current.position.y += Math.sin(clock * 3) * 0.2;
-        } else if (currentStep >= 7) {
+        } else if (activeStep >= 7) {
           // Hovering above emergency on sports field
           droneGroupRef.current.position.set(
             emergencyPos.current.x,
@@ -653,7 +506,7 @@ export const LaColinaDigitalTwinView: React.FC = () => {
             emergencyPos.current.z
           );
         } else {
-          // Stationary on rooftop pad
+          // Stationary above the administration rooftop launch pad
           droneGroupRef.current.position.copy(droneBasePos.current);
         }
       }
@@ -688,11 +541,20 @@ export const LaColinaDigitalTwinView: React.FC = () => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      isMounted = false;
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', handleResize);
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material) ? object.material : [object.material];
+          materials.forEach((material) => material.dispose());
+        }
+      });
       renderer.dispose();
+      renderer.domElement.remove();
     };
-  }, [currentStep]);
+  }, []);
 
   return (
     <div className="p-4 md:p-6 space-y-6 text-left animate-in fade-in duration-200">
@@ -798,7 +660,7 @@ export const LaColinaDigitalTwinView: React.FC = () => {
               <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
               <span className="font-bold text-white">CAMPUS TWIN: LA COLINA</span>
               <span className="text-slate-500">|</span>
-              <span className="text-emerald-400">LAT 6.2150° N, LNG -75.5520° W</span>
+              <span className="text-emerald-400">LAT 6.18572° N, LNG -75.55944° W</span>
             </div>
 
             {/* AI Vision Overlay Toggle */}
@@ -823,14 +685,14 @@ export const LaColinaDigitalTwinView: React.FC = () => {
           {/* AI Computer Vision In-World Bounding Boxes */}
           {aiVisionActive && (
             <div className="absolute inset-0 pointer-events-none z-10 font-mono text-[10px]">
-              {/* Box 1: Science & Robotics Lab */}
+              {/* Administration roof and drone staging pad */}
               <div className="absolute top-[52%] left-[16%] border border-cyan-400 bg-cyan-500/10 px-2 py-0.5 text-cyan-300 font-bold rounded">
-                SCIENCE & ROBOTICS WING [DRONE PAD]
+                ADMINISTRATION ROOF [DRONE STAGING PAD]
               </div>
 
               {/* Box 2: Main Academic Pavilion */}
               <div className="absolute top-[32%] left-[34%] border border-slate-400 bg-slate-500/10 px-2 py-0.5 text-slate-200 font-bold rounded">
-                MAIN ACADEMIC PAVILION [CLASSROOMS]
+                TWO-STORY CLASSROOMS
               </div>
 
               {/* Box 3: Soccer Field Incident */}
@@ -838,9 +700,9 @@ export const LaColinaDigitalTwinView: React.FC = () => {
                 INCIDENT ZONE: SOCCER FIELD [TARGET]
               </div>
 
-              {/* Box 4: Emergency Gate 2 */}
+              {/* Calle 12 Sur entrance */}
               <div className="absolute top-[72%] right-[12%] border border-emerald-400 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 font-bold rounded">
-                GATE 2 [RECOMMENDED AMBULANCE ACCESS]
+                CALLE 12 SUR ENTRANCE [AMBULANCE ACCESS]
               </div>
             </div>
           )}
@@ -918,7 +780,7 @@ export const LaColinaDigitalTwinView: React.FC = () => {
                   </div>
                   <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800/80">
                     <span className="text-slate-500 block text-[10px]">AMBULANCE GATE</span>
-                    <strong className="text-yellow-400">Emergency Gate 2</strong>
+                    <strong className="text-yellow-400">Calle 12 Sur</strong>
                   </div>
                 </div>
               </div>
